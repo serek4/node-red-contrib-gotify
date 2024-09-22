@@ -22,7 +22,7 @@
     }
   },
   "devDependencies": {
-    "node-red": "^1.0.6",
+    "node-red": "^4.0.3",
     "nodemon": "^2.0.3"
   }
 }
