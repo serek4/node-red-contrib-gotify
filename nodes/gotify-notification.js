@@ -1,18 +1,10 @@
-module.exports = function(RED) {
-  const request = require('request')
-
-  function getError(body) {
-    try {
-      return JSON.parse(body)['errorDescription']
-    } catch (e) {
-      return body
-    }
-  }
+module.exports = function (RED) {
+  const http = require('node:http')
 
   function NotificationNode(config) {
-    RED.nodes.createNode(this,config);
-    
-    this.on('input', function(msg, send, done) {
+    RED.nodes.createNode(this, config);
+
+    this.on('input', function (msg, send, done) {
       const {
         title,
         payload: message,
@@ -40,27 +32,59 @@ module.exports = function(RED) {
       if (extras) {
         formData.extras = extras
       }
-    
-      request.post(this.server.endpointUrl.href, { json: formData }, (error, response, body) => {
-        if (!error && response.statusCode == 200) {
-          this.status({
-            fill: "green",
-            shape: "dot",
-            text: "success"
-          });
-        } else {
-          this.status({
-            fill: "red",
-            shape: "ring",
-            text: getError(body)
-          })
-        }
 
-        if (done) {
-          done();
+      const postData = JSON.stringify(formData);
+      const options = {
+        method: "POST",
+        timeout: 5000,
+        headers: {
+          "accept": "application/json",
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(postData)
         }
+      };
+
+      let responseData = new String();
+      const req = http.request(this.server.endpointUrl.href, options, (res) => {
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          responseData += chunk;
+        });
+        res.on("end", () => {
+          if (res.statusCode == 200) {
+            this.status({
+              fill: "green",
+              shape: "dot",
+              text: "success"
+            });
+          } else {
+            this.status({
+              fill: "yellow",
+              shape: "dot",
+              text: `${res.statusMessage} (${res.statusCode})`
+            });
+          }
+        });
       });
-  });
+
+      req.on("timeout", () => {
+        req.destroy();
+      });
+      req.on("error", (e) => {
+        responseData = e;
+        this.status({
+          fill: "red",
+          shape: "ring",
+          text: e.message
+        });
+      });
+      req.on("close", () => {
+        done();
+      });
+
+      req.write(postData);
+      req.end();
+    });
   }
 
   RED.nodes.registerType("gotify-notification", NotificationNode);
